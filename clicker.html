@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cosmic Scrapper — Clicker (Web)</title>
+  <style>
+    :root{--bg:#0b1020;--card:#0f1724;--accent:#7dd3fc;--muted:#9ca3af;--glass: rgba(255,255,255,0.03)}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;background:linear-gradient(180deg,#051021 0%, #07142a 100%);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .app{width:100%;max-width:1100px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.05));border-radius:14px;overflow:hidden;display:grid;grid-template-columns:1fr 420px;gap:20px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    .panel{background:var(--card);border-radius:10px;padding:16px}
+    .left{display:flex;flex-direction:column;align-items:center;gap:12px}
+    .ship{width:300px;height:220px;border-radius:12px;background:var(--glass);display:flex;align-items:center;justify-content:center;font-size:48px;cursor:pointer;user-select:none;transition:transform .08s ease}
+    .ship:active{transform:scale(.97)}
+    .scrap-display{font-weight:700;font-size:22px}
+    .sub{color:var(--muted);font-size:13px}
+    .progress-wrap{width:100%;}
+    .progress-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+    .progress{height:14px;background:rgba(255,255,255,0.06);border-radius:10px;overflow:hidden}
+    .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);width:0%}
+
+    .right{display:flex;flex-direction:column;gap:12px}
+    .store{display:grid;grid-template-columns:1fr;gap:10px}
+    .store .item{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;display:flex;justify-content:space-between;align-items:center}
+    .store .meta{font-size:13px;color:var(--muted)}
+    .store button{background:linear-gradient(90deg,#1e293b,#0b1220);border:1px solid rgba(255,255,255,0.04);color:var(--accent);padding:8px 10px;border-radius:8px;cursor:pointer}
+
+    .tasks{display:flex;flex-direction:column;gap:8px}
+    .task{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;display:flex;justify-content:space-between;align-items:center}
+    .controls{display:flex;gap:8px;justify-content:flex-end}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:var(--accent);cursor:pointer}
+
+    footer{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;padding-top:8px;color:var(--muted);font-size:13px}
+
+    /* responsive */
+    @media (max-width:920px){.app{grid-template-columns:1fr;max-width:760px}.right{order:2}}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel left">
+      <div class="ship" id="ship">🚀<div style="position:absolute;margin-top:68px;font-size:12px;color:var(--muted)">Кликни корабль</div></div>
+      <div class="scrap-display" id="scrapDisplay">Scrap: 0</div>
+      <div class="sub" id="rates">За клик: 1 | Автосбор: 0/с</div>
+
+      <div class="progress-wrap panel" style="width:100%;margin-top:4px;">
+        <div class="progress-label"><span>Прогресс станции</span><span id="progressPct">0%</span></div>
+        <div class="progress"><i id="progressBar"></i></div>
+      </div>
+
+      <div style="width:100%;display:flex;justify-content:center;margin-top:8px;gap:8px">
+        <button class="btn" id="saveBtn">Сохранить</button>
+        <button class="btn" id="loadBtn">Загрузить</button>
+        <button class="btn" id="resetBtn">Сброс</button>
+      </div>
+    </div>
+
+    <div class="panel right">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">Магазин</h3>
+        <div class="sub">Нажми, чтобы купить</div>
+      </div>
+
+      <div class="store" id="store"></div>
+
+      <hr style="border:none;height:1px;background:rgba(255,255,255,0.03);margin:12px 0">
+
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Задачи</h3>
+        <div class="sub">Проверяй вручную</div>
+      </div>
+      <div class="tasks" id="tasks"></div>
+
+      <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+        <div class="sub">Всего кликов: <span id="totalClicks">0</span></div>
+        <div class="sub">Всего заработано: <span id="totalEarned">0</span></div>
+      </div>
+    </div>
+
+    <footer>
+      <div>Cosmic Scrapper — Web version</div>
+      <div>Совет: открой инструменты разработчика, если хочешь менять значения.</div>
+    </footer>
+  </div>
+
+  <script>
+    // === Game data ===
+    const DEFAULT_STATE = {
+      scrap: 0,
+      scrapPerClick: 1,
+      scrapPerSecond: 0,
+      upgrades: {},
+      stationProgress: 0, // 0..100
+      totalClicks: 0,
+      totalEarned: 0,
+    }
+
+    const UPGRADE_DEFS = [
+      {id:'laser_tools', name:'Лазерные клещи', baseCost:10, type:'click', value:1, desc:'+1 за клик'},
+      {id:'magnet_drones', name:'Магнитные дроны', baseCost:50, type:'aps', value:0.5, desc:'+0.5 Scrap/с'},
+      {id:'scrap_refinery', name:'Переработчик', baseCost:200, type:'aps', value:2, desc:'+2 Scrap/с'},
+      {id:'reinforced_hull', name:'Усиленный корпус', baseCost:150, type:'click', value:5, desc:'+5 за клик'},
+      {id:'station_module', name:'Модуль станции', baseCost:1000, type:'progress', value:10, desc:'+10% прогресса'},
+    ];
+
+    const TASK_DEFS = [
+      {id:'collect_100', desc:'Собрать 100 Scrap', type:'scrap_total', value:100, reward:50},
+      {id:'click_50', desc:'Сделать 50 кликов', type:'clicks', value:50, reward:30},
+      {id:'build_25', desc:'Достичь 25% прогресса станции', type:'station_progress', value:25, reward:100},
+    ];
+
+    // === Helpers ===
+    const $ = id => document.getElementById(id);
+    const format = n => Math.floor(n).toLocaleString('ru-RU');
+    function upgradeCost(base, owned){ return Math.floor(base * Math.pow(1.6, owned)); }
+
+    // === State ===
+    let state = loadFromStorage() || {...DEFAULT_STATE};
+
+    // === UI elements ===
+    const ship = $('ship');
+    const scrapDisplay = $('scrapDisplay');
+    const rates = $('rates');
+    const storeEl = $('store');
+    const tasksEl = $('tasks');
+    const progressBar = $('progressBar');
+    const progressPct = $('progressPct');
+    const totalClicksEl = $('totalClicks');
+    const totalEarnedEl = $('totalEarned');
+
+    // === Init ===
+    renderStore();
+    renderTasks();
+    updateUI();
+
+    // === Events ===
+    ship.addEventListener('click', ()=>{
+      state.scrap += state.scrapPerClick;
+      state.totalClicks += 1;
+      state.totalEarned += state.scrapPerClick;
+      // small pop effect
+      ship.style.transform = 'scale(.98)';
+      setTimeout(()=> ship.style.transform = '', 80);
+      checkAutoTasks();
+      updateUI();
+    });
+
+    $('saveBtn').addEventListener('click', ()=>{ saveToStorage(); alert('Сохранено в localStorage.') });
+    $('loadBtn').addEventListener('click', ()=>{ const s = loadFromStorage(); if(s){ state = s; renderStore(); renderTasks(); updateUI(); alert('Загружено.')} else alert('Сохранений нет.'); });
+    $('resetBtn').addEventListener('click', ()=>{ if(confirm('Сбросить прогресс и очистить сохранение?')){ localStorage.removeItem('cosmic_scrapper_save'); state = {...DEFAULT_STATE}; renderStore(); renderTasks(); updateUI(); }});
+
+    // === Store rendering & buy ===
+    function renderStore(){
+      storeEl.innerHTML = '';
+      UPGRADE_DEFS.forEach(u =>{
+        const owned = state.upgrades[u.id] || 0;
+        const cost = upgradeCost(u.baseCost, owned);
+        const item = document.createElement('div'); item.className='item';
+        const info = document.createElement('div');
+        info.innerHTML = `<div style="font-weight:700">${u.name} <span style="color:var(--muted);font-weight:400">(x${owned})</span></div><div class="meta">${u.desc}</div>`;
+        const right = document.createElement('div');
+        const btn = document.createElement('button'); btn.textContent = cost + ' Scrap';
+        btn.onclick = ()=> buyUpgrade(u.id);
+        right.appendChild(btn);
+        item.appendChild(info); item.appendChild(right);
+        storeEl.appendChild(item);
+      });
+    }
+
+    function buyUpgrade(id){
+      const u = UPGRADE_DEFS.find(x=>x.id===id);
+      const owned = state.upgrades[id] || 0;
+      const cost = upgradeCost(u.baseCost, owned);
+      if(state.scrap < cost){ alert(`Недостаточно Scrap. Нужно ${cost}, у вас ${Math.floor(state.scrap)}`); return; }
+      state.scrap -= cost;
+      state.upgrades[id] = owned + 1;
+      if(u.type === 'click') state.scrapPerClick += u.value;
+      else if(u.type === 'aps') state.scrapPerSecond += u.value;
+      else if(u.type === 'progress') state.stationProgress = Math.min(100, state.stationProgress + u.value);
+      renderStore(); updateUI();
+    }
+
+    // === Tasks ===
+    function renderTasks(){
+      tasksEl.innerHTML = '';
+      TASK_DEFS.forEach(t=>{
+        const status = state[t.id] || 'incomplete';
+        const el = document.createElement('div'); el.className='task';
+        const left = document.createElement('div'); left.innerHTML = `<div style="font-weight:600">${t.desc}</div><div class="meta">Награда: ${t.reward} Scrap</div>`;
+        const right = document.createElement('div');
+        if(status === 'done'){
+          right.innerHTML = '<div style="color:#34d399">Выполнено</div>';
+        } else {
+          const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Проверить';
+          btn.onclick = ()=> checkTask(t.id);
+          right.appendChild(btn);
+        }
+        el.appendChild(left); el.appendChild(right);
+        tasksEl.appendChild(el);
+      });
+    }
+
+    function checkTask(id){
+      const t = TASK_DEFS.find(x=>x.id===id);
+      if(!t) return;
+      let ok = false;
+      if(t.type==='scrap_total') ok = state.totalEarned >= t.value || state.scrap >= t.value;
+      if(t.type==='clicks') ok = state.totalClicks >= t.value;
+      if(t.type==='station_progress') ok = state.stationProgress >= t.value;
+      if(ok){ state[t.id] = 'done'; state.scrap += t.reward; alert(`Задача выполнена! +${t.reward} Scrap`); renderTasks(); updateUI(); }
+      else alert('Условия задачи ещё не выполнены.');
+    }
+
+    function checkAutoTasks(){
+      // we only mark tasks as available; user must press 'Проверить' to claim
+    }
+
+    // === Game loop (tick) ===
+    let lastTick = performance.now();
+    function tick(now){
+      const dt = (now - lastTick) / 1000; lastTick = now;
+      if(state.scrapPerSecond > 0){
+        const gain = state.scrapPerSecond * dt;
+        state.scrap += gain; state.totalEarned += gain;
+        // passive progress: each 500 scrap earned -> 1% station
+        const progressGain = (gain / 500) * 1;
+        if(progressGain) state.stationProgress = Math.min(100, state.stationProgress + progressGain);
+      }
+
+      if(state.stationProgress >= 100){
+        alert('Станция завершена! Награда 1000 Scrap');
+        state.scrap += 1000; state.stationProgress = 0;
+      }
+
+      updateUI();
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // === UI update ===
+    function updateUI(){
+      scrapDisplay.textContent = `Scrap: ${format(state.scrap)}`;
+      rates.textContent = `За клик: ${state.scrapPerClick.toFixed(1)} | Автосбор: ${state.scrapPerSecond.toFixed(1)}/с`;
+      progressBar.style.width = `${state.stationProgress}%`;
+      progressPct.textContent = Math.floor(state.stationProgress) + '%';
+      totalClicksEl.textContent = state.totalClicks;
+      totalEarnedEl.textContent = Math.floor(state.totalEarned);
+    }
+
+    // === Storage ===
+    function saveToStorage(){
+      const data = {...state, savedAt: Date.now()};
+      localStorage.setItem('cosmic_scrapper_save', JSON.stringify(data));
+    }
+    function loadFromStorage(){
+      try{ const s = localStorage.getItem('cosmic_scrapper_save'); return s ? JSON.parse(s) : null; }catch(e){return null}
+
+    }
+
+    // autosave every 10s
+    setInterval(saveToStorage, 10000);
+
+    // On page unload, save
+    window.addEventListener('beforeunload', ()=>{ saveToStorage(); });
+
+  </script>
+</body>
+</html>
